@@ -87,6 +87,9 @@ int main(void)
 
   /* USER CODE BEGIN Init */
 
+  /*HW semaphore Clock enable*/
+  __HAL_RCC_HSEM_CLK_ENABLE();
+
   /* USER CODE END Init */
 
   if(IS_ENGINEERING_BOOT_MODE())
@@ -119,13 +122,20 @@ int main(void)
   /* USER CODE BEGIN 2 */
 
   /* -1- Initialize LEDs mounted on STM32MP157C-DK2 board */
-  BSP_LED_Init(LED7);
+  //BSP_LED_Init(LED7);
 
   /* -2- Configure EXTI14 (connected to PA.14 pin) in interrupt mode */
-  EXTI14_IRQHandler_Config();
+  //EXTI14_IRQHandler_Config();
 
-  BSP_LED_Init(LED6);   /* LED6 = "message received" indicator */
+  //BSP_LED_Init(LED6);   /* LED6 = "message received" indicator */
   /* LED7 is already init'd above and used as "message sent" indicator */
+
+  HAL_FDCAN_ConfigGlobalFilter(&hfdcan1,
+                                FDCAN_ACCEPT_IN_RX_FIFO0,  /* non-matching standard frames -> RX FIFO0 */
+                                FDCAN_ACCEPT_IN_RX_FIFO0,  /* non-matching extended frames -> RX FIFO0 */
+                                FDCAN_FILTER_REMOTE,
+                                FDCAN_REJECT_REMOTE);
+
 
   /* Static Tx header, reused for every frame */
   TxHeader.Identifier          = 0x43F;
@@ -144,17 +154,16 @@ int main(void)
     Error_Handler();
   }
 
-  HAL_FDCAN_ConfigGlobalFilter(&hfdcan1,
-                                FDCAN_ACCEPT_IN_RX_FIFO0,  /* non-matching standard frames -> RX FIFO0 */
-                                FDCAN_ACCEPT_IN_RX_FIFO0,  /* non-matching extended frames -> RX FIFO0 */
-                                FDCAN_FILTER_REMOTE,
-                                FDCAN_REJECT_REMOTE);
+
 
   /* Start fdcan1 */
   if (HAL_FDCAN_Start(&hfdcan1) != HAL_OK)
   {
     Error_Handler();
   }
+
+  HAL_GPIO_WritePin(LED_SENT_GPIO_Port, LED_SENT_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(LED_RECEIVED_GPIO_Port, LED_RECEIVED_Pin, GPIO_PIN_RESET);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -376,14 +385,34 @@ static void MX_GPIO_Init(void)
 
   /* GPIO Ports Clock Enable */
   __HAL_RCC_GPIOC_CLK_ENABLE();
-  __HAL_RCC_GPIOH_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
+  __HAL_RCC_GPIOH_CLK_ENABLE();
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(LED_SENT_GPIO_Port, LED_SENT_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(LED_RECEIVED_GPIO_Port, LED_RECEIVED_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin : LED_SENT_Pin */
+  GPIO_InitStruct.Pin = LED_SENT_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(LED_SENT_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pin : PA14 */
   GPIO_InitStruct.Pin = GPIO_PIN_14;
   GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : LED_RECEIVED_Pin */
+  GPIO_InitStruct.Pin = LED_RECEIVED_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(LED_RECEIVED_GPIO_Port, &GPIO_InitStruct);
 
   /* EXTI interrupt init*/
   HAL_NVIC_SetPriority(EXTI14_IRQn, 1, 0);
@@ -400,25 +429,26 @@ static void MX_GPIO_Init(void)
   * @param  None
   * @retval None
   */
+/*
 static void EXTI14_IRQHandler_Config(void)
 {
   GPIO_InitTypeDef   GPIO_InitStruct;
   EXTI_ConfigTypeDef EXTI_ConfigStructure;
 
 
-  /* Enable GPIOA clock */
+  // Enable GPIOA clock
   __HAL_RCC_GPIOA_CLK_ENABLE();
 
-  /* Configure PA.14 pin as input floating */
+  // Configure PA.14 pin as input floating
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
 
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Pin = USER_BUTTON_PIN;
-  PERIPH_LOCK(GPIOA);
+  //PERIPH_LOCK(GPIOA);
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
-  PERIPH_UNLOCK(GPIOA);
+  //PERIPH_UNLOCK(GPIOA);
 
-  /* Set configuration except Interrupt and Event mask of Exti line 14*/
+  // Set configuration except Interrupt and Event mask of Exti line 14
   EXTI_ConfigStructure.Line = EXTI_LINE_14;
   EXTI_ConfigStructure.Trigger = EXTI_TRIGGER_FALLING;
   EXTI_ConfigStructure.GPIOSel = EXTI_GPIOA;
@@ -427,15 +457,17 @@ static void EXTI14_IRQHandler_Config(void)
   HAL_EXTI_SetConfigLine(&hexti, &EXTI_ConfigStructure);
   PERIPH_UNLOCK(EXTI);
 
-  /* Register callback to treat Exti interrupts in user Exti14FallingCb function */
-  HAL_EXTI_RegisterCallback(&hexti, HAL_EXTI_FALLING_CB_ID, Exti14FallingCb);
+  //Register callback to treat Exti interrupts in user Exti14FallingCb function
+  //HAL_EXTI_RegisterCallback(&hexti, HAL_EXTI_FALLING_CB_ID, Exti14FallingCb);
 
-  /* Enable and set line 14 Interrupt to the lowest priority */
+  HAL_EXTI_RegisterCallback(&hexti, HAL_EXTI_FALLING_CB_ID, );
+
+  // Enable and set line 14 Interrupt to the lowest priority
   HAL_NVIC_SetPriority(EXTI14_IRQn, (DEFAULT_IRQ_PRIO + 2U), 0);
   HAL_NVIC_EnableIRQ(EXTI14_IRQn);
 }
 
-
+*/
 
 /*
  *
@@ -475,14 +507,16 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
     TxData[6] = 0x55;
     TxData[7] = 0x00;
 
-    BSP_LED_Off(LED6);
+    //BSP_LED_Off(LED6);
+    HAL_GPIO_WritePin(LED_RECEIVED_GPIO_Port, LED_RECEIVED_Pin, GPIO_PIN_RESET);
 
     if (HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &TxHeader, TxData) != HAL_OK)
     {
       Error_Handler();
     }
 
-    BSP_LED_On(LED7);
+    //BSP_LED_On(LED7);
+    HAL_GPIO_WritePin(LED_SENT_GPIO_Port, LED_SENT_Pin, GPIO_PIN_SET);
   }
 }
 
@@ -492,8 +526,10 @@ void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t RxFifo0ITs)
   {
     if (HAL_FDCAN_GetRxMessage(hfdcan, FDCAN_RX_FIFO0, &RxHeader, RxData) == HAL_OK)
     {
-      BSP_LED_Off(LED7);   /* stop "sent, waiting" indicator */
-      BSP_LED_On(LED6);    /* LED6 = "reply received" */
+      //BSP_LED_Off(LED7);   /* stop "sent, waiting" indicator */
+      //BSP_LED_On(LED6);    /* LED6 = "reply received" */
+    	HAL_GPIO_WritePin(LED_SENT_GPIO_Port, LED_SENT_Pin, GPIO_PIN_RESET);
+    	HAL_GPIO_WritePin(LED_RECEIVED_GPIO_Port, LED_RECEIVED_Pin, GPIO_PIN_SET);
     }
 
     /* Re-arm the notification for the next frame */
